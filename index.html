@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1024" />
+<title>CableVision 2004</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&family=Michroma&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+</head>
+<body>
+
+<div id="tv">
+  <div id="tv-bezel">
+    <div id="screen">
+
+      <!-- ============ VIDEO LAYER ============ -->
+      <video id="video" playsinline></video>
+      <div id="noise"></div>
+
+      <!-- ============ CHANNEL BUG (bottom-right, always visible) -->
+      <div id="bug">
+        <div class="bug-net">CV<span>2004</span></div>
+      </div>
+
+      <!-- ============ NOW-PLAYING BANNER (auto hides) -->
+      <div id="banner" class="hidden">
+        <div class="banner-row">
+          <div class="banner-num" id="banner-num">---</div>
+          <div class="banner-body">
+            <div class="banner-title" id="banner-title">No Signal</div>
+            <div class="banner-sub" id="banner-sub">Press GUIDE to choose a channel</div>
+          </div>
+          <div class="banner-clock" id="banner-clock">--:--</div>
+        </div>
+        <div class="banner-bar"><div class="banner-bar-fill"></div></div>
+      </div>
+
+      <!-- ============ INFO OVERLAY -->
+      <div id="info" class="overlay hidden">
+        <div class="info-head">
+          <div class="info-ch">
+            <div class="ch-num" id="info-num">---</div>
+            <div class="ch-name" id="info-name">—</div>
+          </div>
+          <div class="info-clock" id="info-clock">--:--</div>
+        </div>
+        <div class="info-body">
+          <div class="info-title" id="info-title">No program information</div>
+          <div class="info-desc" id="info-desc">Select a channel from the guide.</div>
+          <div class="info-meta" id="info-meta"></div>
+        </div>
+        <div class="info-hint">PRESS <kbd>INFO</kbd> TO CLOSE</div>
+      </div>
+
+      <!-- ============ GUIDE OVERLAY -->
+      <div id="guide" class="overlay hidden">
+        <div class="guide-topbar">
+          <div class="guide-title">CHANNEL GUIDE</div>
+          <div class="guide-clock" id="guide-clock">--:--</div>
+        </div>
+
+        <div class="guide-filter">
+          <label>CATEGORY</label>
+          <select id="guide-group"></select>
+          <label>SEARCH</label>
+          <input id="guide-search" type="text" placeholder="channel name…" />
+          <div class="guide-count" id="guide-count">0 CHANNELS</div>
+        </div>
+
+        <div class="guide-header">
+          <div class="col-num">CH</div>
+          <div class="col-name">CHANNEL</div>
+          <div class="col-now">NOW PLAYING</div>
+          <div class="col-cat">CATEGORY</div>
+        </div>
+        <div class="guide-list" id="guide-list"></div>
+
+        <div class="guide-footbar">
+          <span><kbd>▲▼</kbd> MOVE</span>
+          <span><kbd>OK</kbd> WATCH</span>
+          <span><kbd>GUIDE</kbd> CLOSE</span>
+          <span><kbd>MENU</kbd> SETTINGS</span>
+        </div>
+      </div>
+
+      <!-- ============ MENU / SETTINGS OVERLAY -->
+      <div id="menu" class="overlay hidden">
+        <div class="menu-title">MAIN MENU</div>
+
+        <div class="menu-section">
+          <div class="menu-label">PLAYLIST SOURCE (M3U)</div>
+          <div class="menu-row">
+            <input id="m3u-url" type="url" placeholder="https://example.com/playlist.m3u" />
+            <button class="btn" id="load-url">LOAD URL</button>
+          </div>
+          <div class="menu-row">
+            <button class="btn" id="paste-open">PASTE M3U TEXT…</button>
+            <button class="btn" id="reload-cached">RELOAD SAVED</button>
+            <button class="btn danger" id="clear-cache">CLEAR SAVED</button>
+          </div>
+          <div class="menu-note" id="menu-note">No playlist loaded.</div>
+        </div>
+
+        <div class="menu-section">
+          <div class="menu-label">PARENTAL / STARTUP</div>
+          <div class="menu-row">
+            <label><input type="checkbox" id="opt-autoplay" /> Auto-tune last channel on power-up</label>
+          </div>
+          <div class="menu-row">
+            <label><input type="checkbox" id="opt-mute" /> Start muted</label>
+          </div>
+        </div>
+
+        <div class="menu-footbar">
+          <span><kbd>MENU</kbd> CLOSE</span>
+          <span>CableVision 2004 · firmware 1.0</span>
+        </div>
+      </div>
+
+      <!-- ============ PASTE MODAL -->
+      <div id="paste" class="overlay hidden">
+        <div class="menu-title">PASTE M3U CONTENTS</div>
+        <textarea id="paste-area" placeholder="#EXTM3U&#10;#EXTINF:-1 tvg-name=&quot;Example&quot;,Example Channel&#10;http://example.com/stream.m3u8"></textarea>
+        <div class="menu-row">
+          <button class="btn primary" id="paste-load">LOAD PLAYLIST</button>
+          <button class="btn" id="paste-cancel">CANCEL</button>
+        </div>
+        <div class="menu-note">Use this if the URL cannot be fetched (CORS). The playlist is saved locally in this browser only.</div>
+      </div>
+
+      <!-- ============ POWER-OFF SCREEN -->
+      <div id="off" class="hidden">
+        <div class="off-dot"></div>
+      </div>
+
+      <!-- ============ BOOT SCREEN -->
+      <div id="boot">
+        <div class="boot-logo">CableVision<span>2004</span></div>
+        <div class="boot-line">DIGITAL CABLE RECEIVER · MODEL DCT-2004</div>
+        <div class="boot-line loading">Loading channel map<span class="dots">…</span></div>
+      </div>
+
+    </div><!-- /screen -->
+
+    <!-- ============ FRONT-PANEL LED READOUT -->
+    <div id="frontpanel">
+      <div class="led-brand">CableVision <span>2004</span></div>
+      <div class="led-readout">
+        <span id="led-ch">---</span>
+        <span class="led-sep">·</span>
+        <span id="led-msg">STANDBY</span>
+      </div>
+      <div class="led-lights">
+        <span class="lamp" id="lamp-power" title="POWER"></span>
+        <span class="lamp" id="lamp-rec" title="REC"></span>
+        <span class="lamp" id="lamp-sig" title="SIGNAL"></span>
+      </div>
+    </div>
+  </div><!-- /bezel -->
+</div><!-- /tv -->
+
+<!-- ============ REMOTE ============ -->
+<div id="remote">
+  <div class="remote-top">
+    <button class="rk power" id="btn-power" title="Power">⏻</button>
+    <button class="rk" id="btn-mute" title="Mute">MUTE</button>
+  </div>
+
+  <div class="remote-numpad">
+    <button class="rk num">1</button><button class="rk num">2</button><button class="rk num">3</button>
+    <button class="rk num">4</button><button class="rk num">5</button><button class="rk num">6</button>
+    <button class="rk num">7</button><button class="rk num">8</button><button class="rk num">9</button>
+    <button class="rk num small" id="btn-back">LAST</button>
+    <button class="rk num">0</button>
+    <button class="rk num small" id="btn-enter">ENTER</button>
+  </div>
+
+  <div class="remote-dpad">
+    <div class="dpad-row"><button class="rk d" id="btn-chup">CH▲</button></div>
+    <div class="dpad-row">
+      <button class="rk d" id="btn-volup">VOL◀</button>
+      <button class="rk d ok" id="btn-ok">OK</button>
+      <button class="rk d" id="btn-voldn">VOL▶</button>
+    </div>
+    <div class="dpad-row"><button class="rk d" id="btn-chdn">CH▼</button></div>
+  </div>
+
+  <div class="remote-fns">
+    <button class="rk fn" id="btn-guide">GUIDE</button>
+    <button class="rk fn" id="btn-info">INFO</button>
+    <button class="rk fn" id="btn-menu">MENU</button>
+    <button class="rk fn" id="btn-exit">EXIT</button>
+  </div>
+
+  <div class="remote-brand">DCT-2004 · UNIVERSAL REMOTE</div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

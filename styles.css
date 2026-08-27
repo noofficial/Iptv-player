@@ -1,0 +1,585 @@
+/* =========================================================
+   CableVision 2004 — mid-2000s cable box UI
+   ========================================================= */
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  background:
+    radial-gradient(ellipse at 50% 20%, #2b2c30 0%, #101012 60%, #050506 100%);
+  min-height: 100vh;
+  font-family: "Share Tech Mono", "VT323", ui-monospace, monospace;
+  color: #dfe;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  padding: 28px 16px 60px;
+}
+
+/* --- The "TV" chassis around the screen -------------------- */
+#tv {
+  width: min(1100px, 98vw);
+  padding: 22px;
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, #4a4a52 0%, #2c2c32 55%, #1a1a1e 100%);
+  box-shadow:
+    inset 0 2px 0 rgba(255,255,255,0.15),
+    inset 0 -3px 8px rgba(0,0,0,0.6),
+    0 30px 60px rgba(0,0,0,0.6),
+    0 0 0 2px #0b0b0c;
+}
+#tv-bezel {
+  border-radius: 14px;
+  padding: 16px 16px 10px;
+  background:
+    linear-gradient(180deg, #191919 0%, #0e0e10 100%);
+  box-shadow:
+    inset 0 0 0 2px #000,
+    inset 0 0 0 4px #2a2a2e,
+    inset 0 0 40px rgba(0,0,0,0.9);
+}
+
+/* --- The CRT-ish screen ----------------------------------- */
+#screen {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+  box-shadow:
+    inset 0 0 0 2px #000,
+    inset 0 0 80px rgba(0,80,120,0.15),
+    inset 0 0 200px rgba(0,0,0,0.9);
+}
+#screen::after {
+  /* Scanlines */
+  content: "";
+  position: absolute; inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255,255,255,0.04) 0px,
+    rgba(255,255,255,0.04) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  pointer-events: none;
+  mix-blend-mode: overlay;
+}
+#video {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  background: #000;
+  object-fit: contain;
+}
+#noise {
+  position: absolute; inset: 0;
+  pointer-events: none;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/></svg>");
+}
+
+/* --- Channel "bug" logo lower-right ----------------------- */
+#bug {
+  position: absolute;
+  right: 14px; bottom: 14px;
+  font-family: "Michroma", "Share Tech Mono", monospace;
+  color: rgba(255,255,255,0.55);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  font-size: 14px;
+  letter-spacing: 2px;
+  z-index: 4;
+}
+.bug-net span {
+  color: #ffd94a;
+  margin-left: 4px;
+  font-size: 10px;
+  vertical-align: super;
+}
+
+/* =========================================================
+   NOW-PLAYING BANNER
+   ========================================================= */
+#banner {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  padding: 14px 18px 10px;
+  z-index: 5;
+  background: linear-gradient(180deg,
+    rgba(0,0,0,0) 0%,
+    rgba(4,20,60,0.7) 30%,
+    rgba(4,20,60,0.92) 100%);
+  color: #eaf6ff;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+#banner.hidden { opacity: 0; transform: translateY(30px); pointer-events: none; }
+.banner-row { display: flex; align-items: center; gap: 18px; }
+.banner-num {
+  min-width: 96px;
+  padding: 8px 14px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #0b2b5a, #06153a);
+  border: 2px solid #2d6bd6;
+  color: #ffd94a;
+  font-family: "VT323", monospace;
+  font-size: 34px;
+  line-height: 1;
+  text-align: center;
+  letter-spacing: 2px;
+  text-shadow: 0 0 6px rgba(255,217,74,0.6);
+}
+.banner-body { flex: 1; min-width: 0; }
+.banner-title {
+  font-family: "Michroma", monospace;
+  font-size: 20px;
+  letter-spacing: 1px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  color: #fff;
+  text-shadow: 0 0 8px rgba(120,180,255,0.4);
+}
+.banner-sub {
+  margin-top: 4px;
+  color: #b7d6ff;
+  font-size: 13px;
+  letter-spacing: 1px;
+}
+.banner-clock {
+  font-family: "VT323", monospace;
+  color: #ffd94a;
+  font-size: 30px;
+  letter-spacing: 2px;
+}
+.banner-bar {
+  margin-top: 10px;
+  height: 4px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.banner-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #ffd94a, #ff8a3d);
+  animation: bannerbar 5s linear forwards;
+}
+@keyframes bannerbar { from { width: 100%; } to { width: 0%; } }
+
+/* =========================================================
+   OVERLAYS (guide / info / menu / paste)
+   ========================================================= */
+.overlay {
+  position: absolute; inset: 0;
+  z-index: 10;
+  color: #eaf6ff;
+  background:
+    linear-gradient(180deg, rgba(1,10,40,0.94) 0%, rgba(1,6,25,0.98) 100%);
+  padding: 18px 22px;
+  display: flex;
+  flex-direction: column;
+  font-family: "Share Tech Mono", monospace;
+}
+.overlay.hidden { display: none; }
+
+.overlay kbd {
+  font-family: inherit;
+  background: #123;
+  border: 1px solid #2d6bd6;
+  border-radius: 3px;
+  padding: 1px 6px;
+  color: #ffd94a;
+  font-size: 11px;
+}
+
+/* ---- GUIDE ------------------------------------------------ */
+.guide-topbar, .guide-footbar, .info-head, .menu-footbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #2d6bd6;
+}
+.guide-title, .menu-title, .info-title-band {
+  font-family: "Michroma", monospace;
+  font-size: 18px;
+  color: #ffd94a;
+  letter-spacing: 2px;
+  text-shadow: 0 0 8px rgba(255,217,74,0.4);
+}
+.guide-clock, .info-clock { color: #ffd94a; font-family: "VT323", monospace; font-size: 26px; }
+
+.guide-filter {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid #1c3a70;
+  color: #9ec5ff;
+  font-size: 12px;
+  letter-spacing: 1px;
+  flex-wrap: wrap;
+}
+.guide-filter select,
+.guide-filter input,
+#m3u-url, #paste-area, .menu-row input[type="text"] {
+  background: #071a3d;
+  color: #eaf6ff;
+  border: 1px solid #2d6bd6;
+  border-radius: 3px;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+}
+.guide-filter select:focus,
+.guide-filter input:focus,
+#m3u-url:focus, #paste-area:focus { border-color: #ffd94a; box-shadow: 0 0 0 2px rgba(255,217,74,0.2); }
+.guide-count {
+  margin-left: auto;
+  color: #ffd94a;
+  font-family: "VT323", monospace;
+  font-size: 20px;
+}
+
+.guide-header, .guide-row {
+  display: grid;
+  grid-template-columns: 70px 1fr 1.2fr 140px;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+.guide-header {
+  color: #7fb0ff;
+  border-bottom: 1px solid #1c3a70;
+  font-size: 11px;
+  letter-spacing: 2px;
+  padding-top: 8px; padding-bottom: 8px;
+}
+.guide-list {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #2d6bd6 transparent;
+}
+.guide-list::-webkit-scrollbar { width: 10px; }
+.guide-list::-webkit-scrollbar-thumb { background: #2d6bd6; border-radius: 5px; }
+.guide-row {
+  border-bottom: 1px dashed #143164;
+  cursor: pointer;
+}
+.guide-row:hover { background: rgba(45,107,214,0.15); }
+.guide-row.selected {
+  background: linear-gradient(90deg, #ffd94a22, #ffd94a10);
+  outline: 2px solid #ffd94a;
+  outline-offset: -2px;
+}
+.guide-row.playing .col-num { color: #7cff9a; }
+.col-num {
+  font-family: "VT323", monospace;
+  font-size: 22px;
+  color: #ffd94a;
+  text-align: right;
+}
+.col-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #fff; }
+.col-now { color: #b7d6ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.col-cat { color: #7fb0ff; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.guide-footbar { border-top: 2px solid #2d6bd6; border-bottom: none; padding-top: 10px; margin-top: 6px; font-size: 11px; letter-spacing: 1px; color: #9ec5ff; }
+.guide-footbar span { margin-right: 16px; }
+
+/* ---- INFO OVERLAY (small card) ---------------------------- */
+#info {
+  inset: auto 0 0 0;
+  height: 45%;
+  border-top: 3px solid #ffd94a;
+  background: linear-gradient(180deg, rgba(1,10,40,0.94), rgba(1,6,25,0.99));
+}
+.info-head {
+  border-bottom: 2px solid #2d6bd6;
+  padding-bottom: 10px;
+}
+.info-ch { display: flex; align-items: baseline; gap: 14px; }
+.ch-num {
+  font-family: "VT323", monospace;
+  font-size: 42px;
+  color: #ffd94a;
+  min-width: 80px;
+}
+.ch-name {
+  font-family: "Michroma", monospace;
+  font-size: 18px;
+  color: #fff;
+  letter-spacing: 1px;
+}
+.info-body { padding: 12px 0; flex: 1; overflow-y: auto; }
+.info-title { font-size: 15px; color: #fff; margin-bottom: 6px; }
+.info-desc { color: #b7d6ff; font-size: 13px; line-height: 1.5; }
+.info-meta { margin-top: 12px; color: #7fb0ff; font-size: 11px; letter-spacing: 1px; }
+.info-hint { text-align: right; color: #7fb0ff; font-size: 11px; letter-spacing: 1px; padding-top: 8px; border-top: 1px solid #1c3a70; }
+
+/* ---- MENU / PASTE ---------------------------------------- */
+.menu-section {
+  padding: 14px 0;
+  border-bottom: 1px solid #1c3a70;
+}
+.menu-label {
+  color: #ffd94a;
+  font-size: 12px;
+  letter-spacing: 2px;
+  margin-bottom: 10px;
+}
+.menu-row {
+  display: flex; gap: 10px; align-items: center; margin-bottom: 8px; flex-wrap: wrap;
+}
+.menu-row label { color: #eaf6ff; font-size: 13px; }
+.menu-row input[type="url"], .menu-row input[type="text"] { flex: 1; min-width: 240px; }
+.menu-note {
+  color: #7fb0ff;
+  font-size: 11px;
+  letter-spacing: 1px;
+  margin-top: 6px;
+}
+#paste-area {
+  width: 100%;
+  height: 45%;
+  min-height: 140px;
+  resize: vertical;
+  margin: 12px 0;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre;
+}
+
+.btn {
+  background: linear-gradient(180deg, #123568, #071a3d);
+  color: #eaf6ff;
+  border: 1px solid #2d6bd6;
+  border-radius: 3px;
+  padding: 8px 14px;
+  font-family: "Share Tech Mono", monospace;
+  font-size: 12px;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn:hover { border-color: #ffd94a; color: #ffd94a; }
+.btn.primary { background: linear-gradient(180deg, #ffd94a, #cc9a1a); color: #06153a; border-color: #ffd94a; }
+.btn.primary:hover { color: #06153a; filter: brightness(1.05); }
+.btn.danger { border-color: #d64444; color: #ffb7b7; }
+.btn.danger:hover { color: #fff; background: linear-gradient(180deg, #a11, #500); }
+
+/* =========================================================
+   BOOT SCREEN
+   ========================================================= */
+#boot {
+  position: absolute; inset: 0;
+  z-index: 20;
+  background: radial-gradient(ellipse at center, #0a1a3e, #000);
+  color: #ffd94a;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px;
+  font-family: "VT323", monospace;
+  transition: opacity 0.6s ease;
+}
+#boot.done { opacity: 0; pointer-events: none; }
+.boot-logo {
+  font-family: "Michroma", monospace;
+  font-size: 42px;
+  letter-spacing: 4px;
+  text-shadow: 0 0 20px rgba(255,217,74,0.6);
+}
+.boot-logo span { color: #ffd94a; margin-left: 6px; }
+.boot-line {
+  font-size: 20px;
+  color: #b7d6ff;
+  letter-spacing: 2px;
+}
+.boot-line.loading { color: #ffd94a; }
+.dots::after {
+  content: "";
+  animation: dots 1.2s steps(4) infinite;
+}
+@keyframes dots {
+  0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } 100% { content: ""; }
+}
+
+/* =========================================================
+   POWER OFF (screen goes dark w/ CRT dot)
+   ========================================================= */
+#off {
+  position: absolute; inset: 0; z-index: 30;
+  background: #000;
+  display: flex; align-items: center; justify-content: center;
+  transition: opacity 0.4s;
+}
+#off.hidden { opacity: 0; pointer-events: none; }
+.off-dot {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: #7cff9a;
+  box-shadow: 0 0 30px #7cff9a, 0 0 60px #7cff9a;
+  animation: pulse 2s infinite ease-in-out;
+}
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+/* =========================================================
+   FRONT PANEL (below the screen, inside the TV chassis)
+   ========================================================= */
+#frontpanel {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 14px 10px 4px;
+  color: #ffd94a;
+}
+.led-brand {
+  font-family: "Michroma", monospace;
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: #999;
+}
+.led-brand span { color: #ffd94a; margin-left: 4px; }
+.led-readout {
+  flex: 1;
+  padding: 6px 14px;
+  background: #0a0a0a;
+  border: 1px solid #1a1a1a;
+  border-radius: 3px;
+  box-shadow: inset 0 0 20px rgba(0,0,0,0.9), inset 0 0 4px rgba(255,217,74,0.2);
+  font-family: "VT323", monospace;
+  font-size: 26px;
+  color: #ffd94a;
+  letter-spacing: 4px;
+  text-shadow: 0 0 6px rgba(255,217,74,0.6);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.led-sep { opacity: 0.5; }
+.led-lights { display: flex; gap: 8px; }
+.lamp {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #331;
+  box-shadow: inset 0 0 3px rgba(0,0,0,0.9);
+}
+.lamp.on { background: #7cff9a; box-shadow: 0 0 8px #7cff9a; }
+#lamp-rec.on { background: #ff5a5a; box-shadow: 0 0 8px #ff5a5a; }
+#lamp-sig.on { background: #ffd94a; box-shadow: 0 0 8px #ffd94a; }
+
+/* =========================================================
+   REMOTE CONTROL
+   ========================================================= */
+#remote {
+  width: min(360px, 92vw);
+  padding: 20px 18px 24px;
+  border-radius: 18px 18px 30px 30px;
+  background:
+    linear-gradient(180deg, #232326 0%, #131315 100%);
+  box-shadow:
+    inset 0 2px 0 rgba(255,255,255,0.08),
+    inset 0 -3px 8px rgba(0,0,0,0.7),
+    0 20px 40px rgba(0,0,0,0.6),
+    0 0 0 2px #000;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 1fr;
+}
+.remote-top { display: flex; justify-content: space-between; gap: 10px; }
+.remote-numpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.remote-dpad {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+}
+.dpad-row { display: flex; gap: 6px; }
+.remote-fns {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.remote-brand {
+  text-align: center;
+  color: #666;
+  font-family: "Michroma", monospace;
+  font-size: 9px;
+  letter-spacing: 3px;
+  margin-top: 4px;
+}
+
+.rk {
+  appearance: none;
+  border: none;
+  cursor: pointer;
+  font-family: "Share Tech Mono", monospace;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: #eaf6ff;
+  padding: 12px 8px;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #3a3a40, #1e1e22);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.15),
+    inset 0 -2px 4px rgba(0,0,0,0.6),
+    0 2px 3px rgba(0,0,0,0.5);
+  transition: transform 0.05s ease, filter 0.1s ease;
+}
+.rk:active {
+  transform: translateY(1px);
+  filter: brightness(1.2);
+}
+.rk.num {
+  font-family: "VT323", monospace;
+  font-size: 22px;
+  padding: 10px 0;
+}
+.rk.num.small { font-family: "Share Tech Mono", monospace; font-size: 10px; }
+.rk.d {
+  min-width: 62px;
+  padding: 10px 6px;
+  background: linear-gradient(180deg, #1e355e, #0b1b3a);
+  color: #cfe0ff;
+}
+.rk.d.ok {
+  background: linear-gradient(180deg, #ffd94a, #b8891a);
+  color: #06153a;
+  font-weight: bold;
+  min-width: 68px;
+}
+.rk.fn {
+  background: linear-gradient(180deg, #2c1e5e, #150b3a);
+  color: #cfc0ff;
+}
+.rk.power {
+  background: linear-gradient(180deg, #a11, #500);
+  color: #fff;
+  width: 46px; height: 46px;
+  border-radius: 50%;
+  padding: 0;
+  font-size: 20px;
+}
+
+/* -------- small screens ---------------------------------- */
+@media (max-width: 700px) {
+  body { padding: 12px 6px 40px; }
+  #tv { padding: 10px; border-radius: 14px; }
+  #tv-bezel { padding: 8px; border-radius: 8px; }
+  .ch-num { font-size: 32px; min-width: 60px; }
+  .banner-num { font-size: 24px; min-width: 72px; padding: 6px 10px; }
+  .banner-title { font-size: 14px; }
+  .guide-header, .guide-row {
+    grid-template-columns: 46px 1fr 90px;
+    font-size: 12px;
+  }
+  .col-now { display: none; }
+  .col-num { font-size: 18px; }
+  .boot-logo { font-size: 24px; letter-spacing: 2px; }
+  .led-readout { font-size: 18px; padding: 4px 10px; }
+  .remote-brand { font-size: 8px; }
+}
