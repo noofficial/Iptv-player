@@ -370,6 +370,95 @@ body {
 .btn.danger:hover { color: #fff; background: linear-gradient(180deg, #a11, #500); }
 
 /* =========================================================
+   SEARCH OVERLAY
+   ========================================================= */
+.search-box {
+  margin: 12px 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #071a3d;
+  border: 2px solid #2d6bd6;
+  border-radius: 4px;
+  padding: 8px 12px;
+}
+.search-box:focus-within { border-color: #ffd94a; box-shadow: 0 0 0 2px rgba(255,217,74,0.2); }
+.search-icon {
+  color: #ffd94a;
+  font-family: "VT323", monospace;
+  font-size: 24px;
+  line-height: 1;
+}
+#search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #eaf6ff;
+  font-family: "Share Tech Mono", monospace;
+  font-size: 18px;
+  letter-spacing: 1px;
+}
+.search-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 6px 0 10px;
+  border-bottom: 1px solid #1c3a70;
+}
+.search-tabs .tab {
+  appearance: none;
+  border: 1px solid #2d6bd6;
+  background: #071a3d;
+  color: #9ec5ff;
+  border-radius: 3px 3px 0 0;
+  padding: 6px 14px;
+  font-family: "Share Tech Mono", monospace;
+  font-size: 12px;
+  letter-spacing: 2px;
+  cursor: pointer;
+}
+.search-tabs .tab:hover { color: #ffd94a; }
+.search-tabs .tab.active {
+  background: linear-gradient(180deg, #ffd94a, #cc9a1a);
+  color: #06153a;
+  border-color: #ffd94a;
+}
+.search-header, .search-row {
+  grid-template-columns: 70px 70px 1fr 140px !important;
+}
+.search-row .col-kind {
+  font-family: "Michroma", monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  padding: 2px 6px;
+  border-radius: 2px;
+  text-align: center;
+  color: #06153a;
+}
+.kind-live   { background: #7cff9a; }
+.kind-movie  { background: #ffd94a; }
+.kind-series { background: #b78dff; }
+.search-hint {
+  padding: 24px;
+  text-align: center;
+  color: #7fb0ff;
+  font-size: 13px;
+  letter-spacing: 1px;
+}
+
+/* Big SEARCH remote key */
+.search-btn {
+  width: 100%;
+  padding: 14px;
+  font-size: 14px;
+  letter-spacing: 3px;
+  background: linear-gradient(180deg, #ffd94a, #b8891a);
+  color: #06153a;
+  font-weight: bold;
+}
+.search-btn:hover { filter: brightness(1.05); }
+
+/* =========================================================
    BOOT SCREEN
    ========================================================= */
 #boot {
@@ -577,6 +666,11 @@ body {
     grid-template-columns: 46px 1fr 90px;
     font-size: 12px;
   }
+  .search-header, .search-row {
+    grid-template-columns: 60px 46px 1fr !important;
+    font-size: 12px;
+  }
+  .search-row .col-cat, .search-header .col-cat { display: none; }
   .col-now { display: none; }
   .col-num { font-size: 18px; }
   .boot-logo { font-size: 24px; letter-spacing: 2px; }

@@ -12,8 +12,11 @@ const LS = {
 };
 
 const state = {
-  channels: [],
-  filtered: [],
+  channels: [],           // all items (live, movie, series)
+  filtered: [],           // guide-visible items (live only)
+  searchResults: [],      // search overlay results
+  searchKind: "all",
+  searchSelected: 0,
   currentIndex: -1,
   guideSelected: 0,
   hls: null,
@@ -22,7 +25,7 @@ const state = {
   bannerTimer: null,
   poweredOn: true,
   lastIndex: -1,
-  opts: { autoplay: true, mute: false },
+  opts: { autoplay: true, mute: false, proxy: "" },
 };
 
 // ---------- DOM helpers -----------------------------------
@@ -30,7 +33,7 @@ const $ = (id) => document.getElementById(id);
 const show = (el) => el.classList.remove("hidden");
 const hide = (el) => el.classList.add("hidden");
 const anyOverlayOpen = () =>
-  [$("guide"), $("info"), $("menu"), $("paste")].some((e) => !e.classList.contains("hidden"));
+  [$("guide"), $("info"), $("menu"), $("paste"), $("search")].some((e) => !e.classList.contains("hidden"));
 
 // ---------- Init ------------------------------------------
 window.addEventListener("DOMContentLoaded", init);
@@ -69,6 +72,7 @@ function applyOptionsToUI() {
   $("opt-autoplay").checked = !!state.opts.autoplay;
   $("opt-mute").checked = !!state.opts.mute;
   $("m3u-url").value = localStorage.getItem(LS.url) || "";
+  $("proxy-prefix").value = state.opts.proxy || "";
 }
 
 // ---------- Clocks / LED ----------------------------------
@@ -98,10 +102,16 @@ function finishBoot() {
 }
 
 // ---------- Playlist loading ------------------------------
+function applyProxy(url) {
+  const p = (state.opts.proxy || "").trim();
+  return p ? p + encodeURIComponent(url) : url;
+}
+
 async function loadFromUrl(url) {
-  setMenuNote(`Fetching ${url} …`);
+  const fetchUrl = applyProxy(url);
+  setMenuNote(`Fetching ${url}${fetchUrl !== url ? " (via proxy)" : ""} …`);
   try {
-    const res = await fetch(url, { redirect: "follow" });
+    const res = await fetch(fetchUrl, { redirect: "follow" });
     if (!res.ok) throw new Error("HTTP " + res.status);
     const text = await res.text();
     if (!/#EXTM3U/i.test(text.slice(0, 200)) && !/#EXTINF/i.test(text)) {
@@ -128,10 +138,15 @@ function ingestPlaylistText(text) {
 }
 
 function afterChannelsLoaded({ fromCache }) {
+  // Backfill kind for old cached entries that predate classification.
+  for (const c of state.channels) if (!c.kind) c.kind = classifyItem(c);
+
   populateGroupSelect();
   applyGuideFilter();
+  const counts = state.channels.reduce((a, c) => (a[c.kind] = (a[c.kind] || 0) + 1, a), {});
   setMenuNote(
-    `${state.channels.length} channels ${fromCache ? "loaded from cache" : "parsed"}.`
+    `${state.channels.length} items ${fromCache ? "loaded from cache" : "parsed"} — ` +
+    `${counts.live || 0} live · ${counts.movie || 0} movies · ${counts.series || 0} series.`
   );
   finishBoot();
   const last = parseInt(localStorage.getItem(LS.last) || "-1", 10);
@@ -186,26 +201,43 @@ function parseM3U(text) {
     if (cur) {
       cur.url = line;
       if (!cur.chNo) cur.chNo = String(ch++);
+      cur.kind = classifyItem(cur);
       channels.push(cur);
       cur = null;
     } else {
       // stray URL, no EXTINF
-      channels.push({
+      const c = {
         name: "Stream " + ch,
         group: "General",
         chNo: String(ch++),
         url: line,
         logo: "", tvgId: "", tvgName: "",
-      });
+      };
+      c.kind = classifyItem(c);
+      channels.push(c);
     }
   }
   return channels;
 }
 
+/* Best-effort classification: Xtream Codes style URLs use /live/,
+   /movie/, and /series/ path prefixes. Plain-file extensions
+   (.mp4, .mkv, .avi, .mov, .m4v) are VOD. Everything else is live. */
+function classifyItem(c) {
+  const u = (c.url || "").toLowerCase();
+  const g = (c.group || "").toLowerCase();
+  if (/\/series\//.test(u) || /(series|tv shows?|episode|season)/.test(g)) return "series";
+  if (/\/movie\//.test(u) || /(movie|vod|film|cinema)/.test(g)) return "movie";
+  if (/\.(mp4|mkv|avi|mov|m4v|webm)(\?|$)/.test(u)) return "movie";
+  return "live";
+}
+
 // ---------- Guide -----------------------------------------
 function populateGroupSelect() {
   const sel = $("guide-group");
-  const groups = Array.from(new Set(state.channels.map((c) => c.group || "General"))).sort();
+  const groups = Array.from(new Set(
+    state.channels.filter((c) => c.kind === "live").map((c) => c.group || "General")
+  )).sort();
   sel.innerHTML =
     `<option value="__all">ALL CATEGORIES</option>` +
     groups.map((g) => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join("");
@@ -216,7 +248,9 @@ function applyGuideFilter() {
   const g = $("guide-group").value;
   state.filtered = state.channels
     .map((c, idx) => ({ c, idx }))
-    .filter(({ c }) => (g === "__all" || c.group === g) && (!q || c.name.toLowerCase().includes(q)));
+    .filter(({ c }) => c.kind === "live"
+      && (g === "__all" || c.group === g)
+      && (!q || c.name.toLowerCase().includes(q)));
   $("guide-count").textContent = `${state.filtered.length} CHANNELS`;
   renderGuide();
 }
@@ -281,11 +315,16 @@ function tuneToIndex(idx) {
 }
 
 function channelStep(delta) {
-  if (!state.channels.length) return;
-  let next = state.currentIndex + delta;
-  if (next < 0) next = state.channels.length - 1;
-  if (next >= state.channels.length) next = 0;
-  tuneToIndex(next);
+  // Cable-box behavior: CH+/- walks through LIVE channels only.
+  const liveIdx = state.channels
+    .map((c, i) => (c.kind === "live" ? i : -1))
+    .filter((i) => i >= 0);
+  if (!liveIdx.length) return;
+  const here = liveIdx.indexOf(state.currentIndex);
+  let pos = here + delta;
+  if (pos < 0) pos = liveIdx.length - 1;
+  if (pos >= liveIdx.length) pos = 0;
+  tuneToIndex(liveIdx[pos]);
 }
 
 function channelLast() {
@@ -403,6 +442,106 @@ function shortUrl(u) {
 }
 
 // ---------- Overlays / power ------------------------------
+/* =========================================================
+   SEARCH OVERLAY
+   ========================================================= */
+function openSearch() {
+  if (!state.channels.length) { openMenu(); return; }
+  show($("search"));
+  const input = $("search-input");
+  input.focus();
+  input.select();
+  runSearch();
+}
+
+function setSearchKind(k) {
+  state.searchKind = k;
+  document.querySelectorAll("#search-tabs .tab").forEach((t) =>
+    t.classList.toggle("active", t.dataset.kind === k)
+  );
+  state.searchSelected = 0;
+  runSearch();
+}
+
+function runSearch() {
+  const q = $("search-input").value.trim().toLowerCase();
+  const kind = state.searchKind;
+  const results = [];
+  const tokens = q.split(/\s+/).filter(Boolean);
+
+  for (let i = 0; i < state.channels.length; i++) {
+    const c = state.channels[i];
+    if (kind !== "all" && c.kind !== kind) continue;
+    if (tokens.length) {
+      const hay = (c.name + " " + (c.group || "") + " " + (c.tvgName || "")).toLowerCase();
+      if (!tokens.every((t) => hay.includes(t))) continue;
+    }
+    results.push({ c, idx: i });
+    if (results.length >= 500) break; // cap for performance
+  }
+  state.searchResults = results;
+  if (state.searchSelected >= results.length) state.searchSelected = Math.max(0, results.length - 1);
+  renderSearch();
+}
+
+function renderSearch() {
+  const list = $("search-list");
+  const q = $("search-input").value.trim();
+  $("search-count").textContent = `${state.searchResults.length} RESULT${state.searchResults.length === 1 ? "" : "S"}`;
+
+  if (!state.searchResults.length) {
+    list.innerHTML = `<div class="search-hint">${q ? "No matches. Try a different term or category." : "Start typing to search live TV, movies, and series."}</div>`;
+    return;
+  }
+
+  const html = state.searchResults.map((row, i) => {
+    const { c, idx } = row;
+    const isPlaying = idx === state.currentIndex;
+    const isSel = i === state.searchSelected;
+    const kindLabel = c.kind === "movie" ? "MOVIE" : c.kind === "series" ? "SERIES" : "LIVE";
+    return `
+      <div class="guide-row search-row ${isPlaying ? "playing" : ""} ${isSel ? "selected" : ""}"
+           data-i="${i}" data-idx="${idx}">
+        <div class="col-kind kind-${c.kind}">${kindLabel}</div>
+        <div class="col-num">${escapeHtml(c.chNo || String(idx + 1))}</div>
+        <div class="col-name">${escapeHtml(c.name)}</div>
+        <div class="col-cat">${escapeHtml(c.group || "General")}</div>
+      </div>`;
+  }).join("");
+  list.innerHTML = html;
+
+  list.querySelectorAll(".search-row").forEach((row) => {
+    row.addEventListener("click", () => {
+      state.searchSelected = parseInt(row.dataset.i, 10);
+      const idx = parseInt(row.dataset.idx, 10);
+      tuneToIndex(idx);
+      closeOverlay($("search"));
+    });
+  });
+
+  const selEl = list.querySelector(".search-row.selected");
+  if (selEl) selEl.scrollIntoView({ block: "nearest" });
+}
+
+function moveSearchSelection(delta) {
+  if (!state.searchResults.length) return;
+  state.searchSelected = Math.max(0, Math.min(state.searchResults.length - 1, state.searchSelected + delta));
+  renderSearch();
+}
+
+function searchSelectPlay() {
+  const row = state.searchResults[state.searchSelected];
+  if (!row) return;
+  tuneToIndex(row.idx);
+  closeOverlay($("search"));
+}
+
+function cycleSearchTab(delta) {
+  const kinds = ["all", "live", "movie", "series"];
+  const idx = (kinds.indexOf(state.searchKind) + delta + kinds.length) % kinds.length;
+  setSearchKind(kinds[idx]);
+}
+
 function openGuide() {
   if (!state.channels.length) { openMenu(); return; }
   // preselect currently playing channel
@@ -416,7 +555,7 @@ function openMenu() { show($("menu")); $("m3u-url").focus(); }
 function openPaste() { show($("paste")); $("paste-area").focus(); }
 function closeOverlay(el) { hide(el); }
 function closeAllOverlays() {
-  [$("guide"), $("info"), $("menu"), $("paste")].forEach(hide);
+  [$("guide"), $("info"), $("menu"), $("paste"), $("search")].forEach(hide);
 }
 
 function togglePower() {
@@ -462,6 +601,7 @@ function bindUI() {
   $("btn-guide").addEventListener("click", () => toggleOverlay($("guide"), openGuide));
   $("btn-info").addEventListener("click", () => toggleOverlay($("info"), openInfo));
   $("btn-menu").addEventListener("click", () => toggleOverlay($("menu"), openMenu));
+  $("btn-search").addEventListener("click", () => toggleOverlay($("search"), openSearch));
   $("btn-exit").addEventListener("click", closeAllOverlays);
   $("btn-back").addEventListener("click", channelLast);
   $("btn-enter").addEventListener("click", numpadCommit);
@@ -520,6 +660,17 @@ function bindUI() {
     state.opts.mute = e.target.checked; saveOptions();
     $("video").muted = e.target.checked;
   });
+  $("proxy-prefix").addEventListener("change", (e) => {
+    state.opts.proxy = e.target.value.trim();
+    saveOptions();
+    setMenuNote(state.opts.proxy ? `Proxy set: ${state.opts.proxy}` : "Proxy cleared. Fetches go directly.");
+  });
+
+  // Search overlay
+  $("search-input").addEventListener("input", runSearch);
+  document.querySelectorAll("#search-tabs .tab").forEach((t) => {
+    t.addEventListener("click", () => setSearchKind(t.dataset.kind));
+  });
 
   // Guide filters
   $("guide-group").addEventListener("change", () => { state.guideSelected = 0; applyGuideFilter(); });
@@ -547,16 +698,24 @@ function adjustVolume(delta) {
 }
 
 function onKey(e) {
-  // If focus is in an input/textarea, ignore most shortcuts
   const tag = document.activeElement && document.activeElement.tagName;
   const inField = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
-  const guideOpen = !$("guide").classList.contains("hidden");
+  const guideOpen  = !$("guide").classList.contains("hidden");
+  const searchOpen = !$("search").classList.contains("hidden");
 
   if (e.key === "Escape") { closeAllOverlays(); return; }
 
+  // Slash always opens search (like a browser find), unless already typing there
+  if (e.key === "/" && !searchOpen) {
+    e.preventDefault();
+    openSearch();
+    return;
+  }
+
   if (inField) {
-    if (guideOpen && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter")) {
-      // allow guide nav even when the search box is focused
+    const navKey = e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter" || e.key === "Tab";
+    if ((guideOpen || searchOpen) && navKey) {
+      // fall through to switch below
     } else {
       return;
     }
@@ -564,22 +723,35 @@ function onKey(e) {
 
   switch (e.key) {
     case "ArrowUp":
-      if (guideOpen) { e.preventDefault(); moveGuideSelection(-1); }
-      else channelStep(+1);
+      if (searchOpen)      { e.preventDefault(); moveSearchSelection(-1); }
+      else if (guideOpen)  { e.preventDefault(); moveGuideSelection(-1); }
+      else                 channelStep(+1);
       break;
     case "ArrowDown":
-      if (guideOpen) { e.preventDefault(); moveGuideSelection(+1); }
-      else channelStep(-1);
+      if (searchOpen)      { e.preventDefault(); moveSearchSelection(+1); }
+      else if (guideOpen)  { e.preventDefault(); moveGuideSelection(+1); }
+      else                 channelStep(-1);
       break;
-    case "ArrowLeft": adjustVolume(-0.1); break;
-    case "ArrowRight": adjustVolume(+0.1); break;
+    case "ArrowLeft":
+      if (searchOpen) { e.preventDefault(); cycleSearchTab(-1); }
+      else adjustVolume(-0.1);
+      break;
+    case "ArrowRight":
+      if (searchOpen) { e.preventDefault(); cycleSearchTab(+1); }
+      else adjustVolume(+0.1);
+      break;
+    case "Tab":
+      if (searchOpen) { e.preventDefault(); cycleSearchTab(e.shiftKey ? -1 : +1); }
+      break;
     case "Enter":
-      if (guideOpen) { e.preventDefault(); guideSelectPlay(); }
-      else openGuide();
+      if (searchOpen)     { e.preventDefault(); searchSelectPlay(); }
+      else if (guideOpen) { e.preventDefault(); guideSelectPlay(); }
+      else                openGuide();
       break;
     case "g": case "G": toggleOverlay($("guide"), openGuide); break;
     case "i": case "I": toggleOverlay($("info"), openInfo); break;
     case "m": case "M": toggleOverlay($("menu"), openMenu); break;
+    case "s": case "S": toggleOverlay($("search"), openSearch); break;
     case "b": case "B": channelLast(); break;
     case " ": e.preventDefault(); { const v = $("video"); v.paused ? v.play() : v.pause(); } break;
     default:

@@ -55,6 +55,42 @@
         <div class="info-hint">PRESS <kbd>INFO</kbd> TO CLOSE</div>
       </div>
 
+      <!-- ============ SEARCH OVERLAY -->
+      <div id="search" class="overlay hidden">
+        <div class="guide-topbar">
+          <div class="guide-title">SEARCH</div>
+          <div class="guide-clock" id="search-clock">--:--</div>
+        </div>
+
+        <div class="search-box">
+          <span class="search-icon">⌕</span>
+          <input id="search-input" type="text" placeholder="Search live TV, movies, series…" autocomplete="off" />
+        </div>
+
+        <div class="search-tabs" id="search-tabs">
+          <button class="tab active" data-kind="all">ALL</button>
+          <button class="tab" data-kind="live">LIVE TV</button>
+          <button class="tab" data-kind="movie">MOVIES</button>
+          <button class="tab" data-kind="series">SERIES</button>
+        </div>
+
+        <div class="guide-header search-header">
+          <div class="col-kind">TYPE</div>
+          <div class="col-num">CH</div>
+          <div class="col-name">TITLE</div>
+          <div class="col-cat">CATEGORY</div>
+        </div>
+        <div class="guide-list" id="search-list"></div>
+
+        <div class="guide-footbar">
+          <span><kbd>▲▼</kbd> MOVE</span>
+          <span><kbd>OK</kbd> WATCH</span>
+          <span><kbd>TAB</kbd> FILTER</span>
+          <span><kbd>SEARCH</kbd> CLOSE</span>
+          <span class="guide-count" id="search-count">0 RESULTS</span>
+        </div>
+      </div>
+
       <!-- ============ GUIDE OVERLAY -->
       <div id="guide" class="overlay hidden">
         <div class="guide-topbar">
@@ -102,6 +138,17 @@
             <button class="btn danger" id="clear-cache">CLEAR SAVED</button>
           </div>
           <div class="menu-note" id="menu-note">No playlist loaded.</div>
+        </div>
+
+        <div class="menu-section">
+          <div class="menu-label">SERVER PROXY (OPTIONAL)</div>
+          <div class="menu-row">
+            <input id="proxy-prefix" type="text" placeholder="/proxy?url=  (leave empty for direct fetch)" />
+          </div>
+          <div class="menu-note">
+            If your VPS runs a small proxy endpoint (see README), enter its prefix here to avoid CORS errors when
+            fetching M3U URLs. Example: <code>/proxy?url=</code>
+          </div>
         </div>
 
         <div class="menu-section">
@@ -187,6 +234,8 @@
     </div>
     <div class="dpad-row"><button class="rk d" id="btn-chdn">CH▼</button></div>
   </div>
+
+  <button class="rk fn search-btn" id="btn-search">🔍 SEARCH</button>
 
   <div class="remote-fns">
     <button class="rk fn" id="btn-guide">GUIDE</button>
