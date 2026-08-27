@@ -33,7 +33,7 @@ Pure static site — no build step, no server-side rendering.
 | `Space` | Pause / resume |
 | `Esc` | Close overlays |
 
-## Deploying to silverbasin.vegas on your VPS
+## Deploying to iptv.silverbasin.vegas on your VPS
 
 Because the site is fully static, there is nothing to build or run — just serve the folder. Recommended: nginx on Debian/Ubuntu with a Let's Encrypt cert.
 
@@ -41,30 +41,30 @@ Because the site is fully static, there is nothing to build or run — just serv
 
 ```sh
 # on the VPS
-sudo mkdir -p /var/www/silverbasin
-sudo chown -R $USER:$USER /var/www/silverbasin
+sudo mkdir -p /var/www/iptv
+sudo chown -R $USER:$USER /var/www/iptv
 
 # from your laptop
-rsync -avz --delete ./ user@silverbasin.vegas:/var/www/silverbasin/
+rsync -avz --delete ./ user@iptv.silverbasin.vegas:/var/www/iptv/
 ```
 
 Or clone the repo directly on the VPS:
 
 ```sh
-sudo git clone https://github.com/noofficial/Iptv-player.git /var/www/silverbasin
+sudo git clone https://github.com/noofficial/Iptv-player.git /var/www/iptv
 ```
 
 ### 2. nginx server block
 
-Put this in `/etc/nginx/sites-available/silverbasin.vegas` and symlink it into `sites-enabled/`:
+Put this in `/etc/nginx/sites-available/iptv.silverbasin.vegas` and symlink it into `sites-enabled/`:
 
 ```nginx
 server {
     listen 80;
     listen [::]:80;
-    server_name silverbasin.vegas www.silverbasin.vegas;
+    server_name iptv.silverbasin.vegas;
 
-    root /var/www/silverbasin;
+    root /var/www/iptv;
     index index.html;
 
     # -------- The static app ----------------------------------
@@ -104,7 +104,7 @@ server {
 Enable and reload:
 
 ```sh
-sudo ln -s /etc/nginx/sites-available/silverbasin.vegas /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/iptv.silverbasin.vegas /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
@@ -112,18 +112,18 @@ sudo nginx -t && sudo systemctl reload nginx
 
 ```sh
 sudo apt install certbot python3-certbot-nginx
-sudo certbot --nginx -d silverbasin.vegas -d www.silverbasin.vegas
+sudo certbot --nginx -d iptv.silverbasin.vegas
 ```
 
 Certbot rewrites the server block to add `listen 443 ssl` and redirects HTTP → HTTPS. HTTPS is required in modern browsers for the `<video>` HLS pipeline to work reliably.
 
 ### 4. Point DNS
 
-At your registrar, set an `A` record for `silverbasin.vegas` (and a `CNAME` for `www`) pointing to your VPS's public IP.
+At your registrar, set an `A` record for `iptv.silverbasin.vegas` (and a `CNAME` for `www`) pointing to your VPS's public IP.
 
 ### 5. Use it
 
-Open `https://silverbasin.vegas`, hit **MENU**, paste your M3U URL, press **LOAD URL**. If the fetch fails with a CORS error, set the **SERVER PROXY** field to `/proxy?url=` and load again — the request will now go through nginx on your own domain instead of the browser hitting the third-party host directly.
+Open `https://iptv.silverbasin.vegas`, hit **MENU**, paste your M3U URL, press **LOAD URL**. If the fetch fails with a CORS error, set the **SERVER PROXY** field to `/proxy?url=` and load again — the request will now go through nginx on your own domain instead of the browser hitting the third-party host directly.
 
 ## Security note about the CORS proxy
 
