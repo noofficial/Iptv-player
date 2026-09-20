@@ -21,6 +21,14 @@ import sys
 LISTEN_HOST = "127.0.0.1"
 LISTEN_PORT = 8091
 MAX_BODY_CHUNK = 64 * 1024
+# Many IPTV providers filter their playlist size by User-Agent — a known
+# player like VLC gets the full catalog, an unknown UA gets a subset or
+# a 403. Send a VLC UA by default; a browser can still override it by
+# passing ?ua=... in the query.
+DEFAULT_UA = "VLC/3.0.20 LibVLC/3.0.20"
+# Reads block up to this many seconds without data before we give up.
+# Big M3Us with slow origins can take a while, so keep it generous.
+UPSTREAM_TIMEOUT = 120
 
 FORWARD_REQ_HEADERS = (
     "range", "if-range", "if-none-match", "if-modified-since",
@@ -71,7 +79,8 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(b"missing or invalid url= parameter")
             return
 
-        headers = {"User-Agent": "CableVision2004/1.0"}
+        ua = qs.get("ua", [DEFAULT_UA])[0]
+        headers = {"User-Agent": ua}
         for h in FORWARD_REQ_HEADERS:
             v = self.headers.get(h)
             if v:
@@ -79,7 +88,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
 
         req = urllib.request.Request(target, headers=headers, method=method)
         try:
-            with urllib.request.urlopen(req, timeout=30) as up:
+            with urllib.request.urlopen(req, timeout=UPSTREAM_TIMEOUT) as up:
                 self.send_response(up.status)
                 for h in FORWARD_RES_HEADERS:
                     v = up.headers.get(h)
