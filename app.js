@@ -26,6 +26,7 @@ const state = {
   currentIndex: -1,
   guideSelected: 0,
   hls: null,
+  mpegts: null,
   numpadBuffer: "",
   numpadTimer: null,
   bannerTimer: null,
@@ -400,7 +401,7 @@ function tuneToIndex(idx) {
   const chLabel = c.chNo || String(idx + 1);
   setLed(chLabel.padStart(3, "0"), c.name.toUpperCase().slice(0, 24));
   showBanner(chLabel, c.name, c.group || "");
-  playUrl(c.url);
+  playUrl(c.url, c.kind);
   updateInfoOverlay();
   renderGuide(); // keep playing marker fresh
 }
@@ -450,22 +451,38 @@ function numpadCommit() {
 }
 
 // ---------- Playback --------------------------------------
-function playUrl(url) {
+/* Classify what player we should hand a URL to:
+   - hls   → hls.js (or Safari native <video>) for .m3u8 manifests
+   - mpeg  → mpegts.js for raw MPEG-TS live streams (Xtream Codes
+              typically serves these as either .ts or extension-less
+              URLs under /USER/PASS/STREAM_ID)
+   - file  → native <video> for .mp4, .mkv, .mov, .m4v, .webm (VOD) */
+function pickPlayer(url, kind) {
+  const u = url.toLowerCase().split("?")[0];
+  if (u.endsWith(".m3u8")) return "hls";
+  if (/\.(mp4|mkv|mov|m4v|webm)$/.test(u)) return "file";
+  if (u.endsWith(".ts")) return "mpeg";
+  // Xtream live URLs commonly have no extension — /USER/PASS/12345
+  if (kind === "live") return "mpeg";
+  return "file";
+}
+
+function playUrl(url, kind) {
   const v = $("video");
   destroyHls();
+  destroyMpegts();
   setLamp("sig", false);
 
   if (!url) return;
   v.muted = !!state.opts.mute;
 
   const playUrl_ = proxyStreamIfNeeded(url);
-  const isM3U8 = /\.m3u8($|\?)/i.test(url);
+  const player = pickPlayer(url, kind);
 
-  if (isM3U8 && window.Hls && Hls.isSupported()) {
+  if (player === "hls" && window.Hls && Hls.isSupported()) {
     const hlsOpts = { enableWorker: true, lowLatencyMode: true };
-    // When a proxy is configured, route every .m3u8 / .ts fetch through it,
-    // so both the manifest AND its segments (which may point at http:// URLs)
-    // go through our https:// domain instead of hitting mixed-content blocks.
+    // With a proxy set, route every .m3u8 / .ts fetch through it so
+    // manifest AND segments avoid mixed-content / CORS walls.
     if (state.opts.proxy) hlsOpts.loader = makeProxiedLoader();
     const hls = new Hls(hlsOpts);
     state.hls = hls;
@@ -481,12 +498,37 @@ function playUrl(url) {
         showBanner(currentChLabel(), currentChName(), "SIGNAL ERROR — " + (data.details || "unknown"));
       }
     });
-  } else {
-    // Native HLS on Safari, or plain mp4/mkv/ts VOD
-    v.src = playUrl_;
-    v.play().catch(() => {});
+    return;
+  }
+
+  if (player === "mpeg" && window.mpegts && mpegts.isSupported()) {
+    const p = mpegts.createPlayer(
+      { type: "mpegts", isLive: true, url: playUrl_ },
+      { enableStashBuffer: false, liveBufferLatencyChasing: true }
+    );
+    state.mpegts = p;
+    p.attachMediaElement(v);
+    p.load();
+    p.play().catch(() => {});
+    p.on(mpegts.Events.ERROR, (t, d) => {
+      setLamp("sig", false);
+      showBanner(currentChLabel(), currentChName(), "SIGNAL ERROR — " + t + "/" + d);
+    });
     v.addEventListener("playing", () => setLamp("sig", true), { once: true });
-    v.addEventListener("error", () => setLamp("sig", false), { once: true });
+    return;
+  }
+
+  // Native <video>: Safari HLS, or VOD file (mp4/mkv/webm/…)
+  v.src = playUrl_;
+  v.play().catch(() => {});
+  v.addEventListener("playing", () => setLamp("sig", true), { once: true });
+  v.addEventListener("error", () => setLamp("sig", false), { once: true });
+}
+
+function destroyMpegts() {
+  if (state.mpegts) {
+    try { state.mpegts.pause(); state.mpegts.unload(); state.mpegts.detachMediaElement(); state.mpegts.destroy(); } catch {}
+    state.mpegts = null;
   }
 }
 
