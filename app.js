@@ -104,10 +104,34 @@ function finishBoot() {
 // ---------- Playlist loading ------------------------------
 function applyProxy(url) {
   const p = (state.opts.proxy || "").trim();
-  return p ? p + encodeURIComponent(url) : url;
+  if (!p || !url) return url;
+  // Don't double-wrap URLs that already go through the proxy
+  if (url.startsWith(p) || url.includes("/proxy?url=")) return url;
+  return p + encodeURIComponent(url);
+}
+
+/* When to route a stream URL through the proxy:
+   - user has configured a proxy prefix
+   - AND the stream URL is http:// while the page is https:// (mixed content),
+     OR the URL is on a different origin (likely to hit CORS on HLS segments)
+   Direct https-same-origin URLs are left alone. */
+function proxyStreamIfNeeded(url) {
+  if (!state.opts.proxy || !url) return url;
+  try {
+    const u = new URL(url, location.href);
+    const mixed = location.protocol === "https:" && u.protocol === "http:";
+    const crossOrigin = u.origin !== location.origin;
+    if (mixed || crossOrigin) return applyProxy(url);
+    return url;
+  } catch {
+    return url;
+  }
 }
 
 async function loadFromUrl(url) {
+  // For the playlist fetch itself, always send through the proxy when
+  // one is configured — otherwise a plain http:// playlist URL will be
+  // blocked as mixed content from an https:// page before we can even try.
   const fetchUrl = applyProxy(url);
   setMenuNote(`Fetching ${url}${fetchUrl !== url ? " (via proxy)" : ""} …`);
   try {
@@ -367,12 +391,18 @@ function playUrl(url) {
   if (!url) return;
   v.muted = !!state.opts.mute;
 
+  const playUrl_ = proxyStreamIfNeeded(url);
   const isM3U8 = /\.m3u8($|\?)/i.test(url);
 
   if (isM3U8 && window.Hls && Hls.isSupported()) {
-    const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
+    const hlsOpts = { enableWorker: true, lowLatencyMode: true };
+    // When a proxy is configured, route every .m3u8 / .ts fetch through it,
+    // so both the manifest AND its segments (which may point at http:// URLs)
+    // go through our https:// domain instead of hitting mixed-content blocks.
+    if (state.opts.proxy) hlsOpts.loader = makeProxiedLoader();
+    const hls = new Hls(hlsOpts);
     state.hls = hls;
-    hls.loadSource(url);
+    hls.loadSource(playUrl_);
     hls.attachMedia(v);
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
       v.play().catch(() => {});
@@ -385,12 +415,24 @@ function playUrl(url) {
       }
     });
   } else {
-    // Native HLS on Safari, or plain mp4/ts
-    v.src = url;
+    // Native HLS on Safari, or plain mp4/mkv/ts VOD
+    v.src = playUrl_;
     v.play().catch(() => {});
     v.addEventListener("playing", () => setLamp("sig", true), { once: true });
     v.addEventListener("error", () => setLamp("sig", false), { once: true });
   }
+}
+
+/* Return a hls.js loader subclass that rewrites the context URL through
+   our proxy before delegating to the default XHR loader. */
+function makeProxiedLoader() {
+  const Base = Hls.DefaultConfig.loader;
+  return class ProxiedLoader extends Base {
+    load(context, config, callbacks) {
+      context.url = proxyStreamIfNeeded(context.url);
+      return super.load(context, config, callbacks);
+    }
+  };
 }
 
 function destroyHls() {

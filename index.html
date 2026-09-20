@@ -146,8 +146,9 @@
             <input id="proxy-prefix" type="text" placeholder="/proxy?url=  (leave empty for direct fetch)" />
           </div>
           <div class="menu-note">
-            If your VPS runs a small proxy endpoint (see README), enter its prefix here to avoid CORS errors when
-            fetching M3U URLs. Example: <code>/proxy?url=</code>
+            If your VPS runs the bundled proxy endpoint (see <code>deploy/</code>), enter its prefix here.
+            The prefix is used for both the playlist fetch and — when needed — the actual video streams,
+            so an http:// playlist works from an https:// site. Example: <code>/proxy?url=</code>
           </div>
         </div>
 

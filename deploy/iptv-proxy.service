@@ -1,0 +1,18 @@
+[Unit]
+Description=CableVision 2004 CORS/mixed-content proxy
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /var/www/iptv/deploy/iptv-proxy.py
+Restart=on-failure
+RestartSec=3
+User=www-data
+Group=www-data
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
