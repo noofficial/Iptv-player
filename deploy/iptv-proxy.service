@@ -9,6 +9,10 @@ Restart=on-failure
 RestartSec=3
 User=www-data
 Group=www-data
+Environment=PUBLIC_PROXY_URL=https://iptv.silverbasin.vegas/proxy
+# Flip to 1 to log every client request header to journalctl. Off by
+# default — handy for debugging what a real IPTV client is sending.
+Environment=PROXY_DEBUG_HEADERS=0
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
