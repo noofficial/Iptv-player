@@ -3,13 +3,19 @@
    ========================================================= */
 
 // ---------- Storage keys ----------------------------------
+// Small values (options, current channel index, URL) live in localStorage.
+// The playlist itself (raw M3U text + parsed channels) can be tens of MB
+// for a big Xtream Codes provider, so it goes into IndexedDB where the
+// quota is measured in hundreds of MB instead of ~5.
 const LS = {
   url:      "cv2004.m3uUrl",
-  text:     "cv2004.m3uText",
-  channels: "cv2004.channels",
   last:     "cv2004.lastCh",
   opts:     "cv2004.opts",
 };
+const IDB_NAME = "cv2004";
+const IDB_STORE = "playlist";
+const IDB_KEY_TEXT = "m3uText";
+const IDB_KEY_CHANNELS = "channels";
 
 const state = {
   channels: [],           // all items (live, movie, series)
@@ -28,6 +34,41 @@ const state = {
   opts: { autoplay: true, mute: false, proxy: "" },
 };
 
+// ---------- IndexedDB (playlist cache) ---------------------
+function idbOpen() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+function idbGet(key) {
+  return idbOpen().then((db) => new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, "readonly");
+    const req = tx.objectStore(IDB_STORE).get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  }));
+}
+function idbSet(key, value) {
+  return idbOpen().then((db) => new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, "readwrite");
+    tx.objectStore(IDB_STORE).put(value, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  }));
+}
+function idbClear() {
+  return idbOpen().then((db) => new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, "readwrite");
+    tx.objectStore(IDB_STORE).clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  }));
+}
+
 // ---------- DOM helpers -----------------------------------
 const $ = (id) => document.getElementById(id);
 const show = (el) => el.classList.remove("hidden");
@@ -45,19 +86,31 @@ async function init() {
   startClock();
   setLamp("power", true);
 
-  const cachedChannels = safeParse(localStorage.getItem(LS.channels));
-  if (cachedChannels && Array.isArray(cachedChannels) && cachedChannels.length) {
-    state.channels = cachedChannels;
+  // 1. Try the parsed channels cache in IndexedDB.
+  let channels = null;
+  try { channels = await idbGet(IDB_KEY_CHANNELS); } catch {}
+  if (Array.isArray(channels) && channels.length) {
+    state.channels = channels;
     afterChannelsLoaded({ fromCache: true });
-  } else {
-    // no cached channels — show boot for a moment, then open menu
-    setLed("---", "NO PLAYLIST");
-    setTimeout(() => {
-      finishBoot();
-      openMenu();
-      setMenuNote("Enter an M3U URL or paste an M3U to get started.");
-    }, 1200);
+    return;
   }
+
+  // 2. Fall back to the raw M3U text (re-parse). This covers the case
+  //    where a previous session failed to cache the parsed form.
+  let text = null;
+  try { text = await idbGet(IDB_KEY_TEXT); } catch {}
+  if (text) {
+    ingestPlaylistText(text);
+    return;
+  }
+
+  // 3. Nothing cached — open the menu.
+  setLed("---", "NO PLAYLIST");
+  setTimeout(() => {
+    finishBoot();
+    openMenu();
+    setMenuNote("Enter an M3U URL or paste an M3U to get started.");
+  }, 1200);
 }
 
 // ---------- Options ---------------------------------------
@@ -142,11 +195,13 @@ async function loadFromUrl(url) {
       throw new Error("Response does not look like an M3U playlist.");
     }
     localStorage.setItem(LS.url, url);
-    localStorage.setItem(LS.text, text);
-    ingestPlaylistText(text);
-    setMenuNote(`Loaded ${state.channels.length} channels from URL.`);
+    await idbSet(IDB_KEY_TEXT, text).catch((e) =>
+      console.warn("idb text save failed:", e)
+    );
+    await ingestPlaylistText(text);
+    setMenuNote(`Loaded ${state.channels.length} items from URL.`);
     closeAllOverlays();
-    if (state.channels.length) tuneToIndex(0);
+    if (state.channels.length) tuneToFirstLive();
   } catch (err) {
     setMenuNote(
       `Could not fetch: ${err.message}. If your browser blocks it (CORS), open "PASTE M3U TEXT" and paste the file's contents instead.`
@@ -154,11 +209,23 @@ async function loadFromUrl(url) {
   }
 }
 
-function ingestPlaylistText(text) {
+async function ingestPlaylistText(text) {
   const channels = parseM3U(text);
   state.channels = channels;
-  localStorage.setItem(LS.channels, JSON.stringify(channels));
+  // Cache the parsed form so the next visit skips the parse. This can
+  // fail (quota) for very large playlists — that's fine, init() will
+  // fall back to the raw M3U text and reparse.
+  try { await idbSet(IDB_KEY_CHANNELS, channels); }
+  catch (e) { console.warn("idb channels save failed:", e); }
   afterChannelsLoaded({ fromCache: false });
+}
+
+// Prefer the first LIVE channel when auto-tuning after a fresh load;
+// falling through to plain index 0 avoids nothing-to-play if a playlist
+// somehow has no live entries.
+function tuneToFirstLive() {
+  const firstLive = state.channels.findIndex((c) => c.kind === "live");
+  tuneToIndex(firstLive >= 0 ? firstLive : 0);
 }
 
 function afterChannelsLoaded({ fromCache }) {
@@ -678,31 +745,34 @@ function bindUI() {
   });
   $("paste-open").addEventListener("click", openPaste);
   $("paste-cancel").addEventListener("click", () => hide($("paste")));
-  $("paste-load").addEventListener("click", () => {
+  $("paste-load").addEventListener("click", async () => {
     const text = $("paste-area").value;
     if (!/#EXTINF/i.test(text) && !/https?:\/\//i.test(text)) {
       setMenuNote("Pasted content does not look like an M3U playlist.");
       return;
     }
-    localStorage.setItem(LS.text, text);
     localStorage.removeItem(LS.url);
-    ingestPlaylistText(text);
+    try { await idbSet(IDB_KEY_TEXT, text); }
+    catch (e) { console.warn("idb text save failed:", e); }
+    await ingestPlaylistText(text);
     hide($("paste"));
     closeAllOverlays();
-    if (state.channels.length) tuneToIndex(0);
+    if (state.channels.length) tuneToFirstLive();
   });
-  $("reload-cached").addEventListener("click", () => {
-    const text = localStorage.getItem(LS.text);
+  $("reload-cached").addEventListener("click", async () => {
+    let text = null;
+    try { text = await idbGet(IDB_KEY_TEXT); } catch {}
     if (text) {
-      ingestPlaylistText(text);
-      setMenuNote(`Reloaded ${state.channels.length} channels from saved playlist.`);
+      await ingestPlaylistText(text);
+      setMenuNote(`Reloaded ${state.channels.length} items from saved playlist.`);
     } else {
       setMenuNote("No saved playlist yet.");
     }
   });
-  $("clear-cache").addEventListener("click", () => {
+  $("clear-cache").addEventListener("click", async () => {
     if (!confirm("Clear the saved playlist and remembered channel?")) return;
-    [LS.url, LS.text, LS.channels, LS.last].forEach((k) => localStorage.removeItem(k));
+    [LS.url, LS.last].forEach((k) => localStorage.removeItem(k));
+    try { await idbClear(); } catch (e) { console.warn("idb clear failed:", e); }
     state.channels = []; state.filtered = []; state.currentIndex = -1; state.lastIndex = -1;
     destroyHls();
     populateGroupSelect();
