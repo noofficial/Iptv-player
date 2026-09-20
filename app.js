@@ -656,8 +656,24 @@ function bindUI() {
 
   // Menu buttons
   $("load-url").addEventListener("click", () => {
+    // Belt-and-suspenders: always pick up the current proxy value in
+    // case the input event hasn't fired yet.
+    const proxy = $("proxy-prefix").value.trim();
+    if (proxy !== state.opts.proxy) {
+      state.opts.proxy = proxy;
+      saveOptions();
+    }
     const url = $("m3u-url").value.trim();
     if (!url) { setMenuNote("Enter an M3U URL first."); return; }
+    // Warn early if we're about to hit a mixed-content wall with no proxy.
+    if (location.protocol === "https:" && url.startsWith("http://") && !state.opts.proxy) {
+      setMenuNote(
+        "This is an http:// URL loaded from an https:// site — the browser " +
+        "will block it as mixed content. Put /proxy?url= in the SERVER PROXY " +
+        "field first, or use PASTE M3U TEXT."
+      );
+      return;
+    }
     loadFromUrl(url);
   });
   $("paste-open").addEventListener("click", openPaste);
@@ -702,7 +718,10 @@ function bindUI() {
     state.opts.mute = e.target.checked; saveOptions();
     $("video").muted = e.target.checked;
   });
-  $("proxy-prefix").addEventListener("change", (e) => {
+  // Use input (not change) so the value saves on every keystroke rather
+  // than only on blur — otherwise clicking LOAD URL right after typing
+  // can race the field's change event on some browsers.
+  $("proxy-prefix").addEventListener("input", (e) => {
     state.opts.proxy = e.target.value.trim();
     saveOptions();
     setMenuNote(state.opts.proxy ? `Proxy set: ${state.opts.proxy}` : "Proxy cleared. Fetches go directly.");
