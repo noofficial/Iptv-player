@@ -14,6 +14,7 @@ Zero third-party deps — stdlib only.
 
 import http.server
 import socketserver
+import ssl
 import urllib.request
 import urllib.parse
 import sys
@@ -29,6 +30,12 @@ DEFAULT_UA = "VLC/3.0.20 LibVLC/3.0.20"
 # Reads block up to this many seconds without data before we give up.
 # Big M3Us with slow origins can take a while, so keep it generous.
 UPSTREAM_TIMEOUT = 120
+
+# IPTV redirects often land on bare-IP HTTPS with certs that don't
+# match the IP — trust anything, like every real IPTV client does.
+INSECURE_SSL_CTX = ssl.create_default_context()
+INSECURE_SSL_CTX.check_hostname = False
+INSECURE_SSL_CTX.verify_mode = ssl.CERT_NONE
 
 FORWARD_REQ_HEADERS = (
     "range", "if-range", "if-none-match", "if-modified-since",
@@ -87,8 +94,14 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                 headers[h] = v
 
         req = urllib.request.Request(target, headers=headers, method=method)
+        # IPTV origins routinely 302 to a bare-IP HTTPS URL whose cert
+        # isn't valid for the IP (or is self-signed). urllib's default
+        # is to verify — an app like VLC or TiViMate does not. Match
+        # that behavior so the redirect chain resolves.
         try:
-            with urllib.request.urlopen(req, timeout=UPSTREAM_TIMEOUT) as up:
+            with urllib.request.urlopen(
+                req, timeout=UPSTREAM_TIMEOUT, context=INSECURE_SSL_CTX
+            ) as up:
                 self.send_response(up.status)
                 for h in FORWARD_RES_HEADERS:
                     v = up.headers.get(h)
