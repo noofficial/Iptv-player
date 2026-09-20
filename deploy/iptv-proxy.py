@@ -27,8 +27,8 @@ import sys
 import urllib.parse
 import urllib.request
 
-LISTEN_HOST = "127.0.0.1"
-LISTEN_PORT = 8091
+LISTEN_HOST = os.environ.get("LISTEN_HOST", "127.0.0.1")
+LISTEN_PORT = int(os.environ.get("LISTEN_PORT", "8091"))
 MAX_BODY_CHUNK = 64 * 1024
 DEFAULT_UA = "VLC/3.0.20 LibVLC/3.0.20"
 UPSTREAM_TIMEOUT = 120
